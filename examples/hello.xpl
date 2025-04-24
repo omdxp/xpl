@@ -4,10 +4,10 @@
 	<body>
 	  <var name="result" type="int"/>
 	  <assign var="result">
-	    <add>
-	      <param> 5 </param>
-	      <param> 3 </param>
-		</add>
+	    <call function="add">
+	      <param>5</param>
+	      <param>3</param>
+	    </call>
 	  </assign>
 	  <print> "Hello, World!" </print>
 	  <print> "The result of 5 + 3 is: " </print>
