@@ -1,18 +1,33 @@
 // src/vm.rs
 
+use std::collections::HashMap;
 use crate::error::XplError;
 use crate::parser::{BinOp, Expr, Program, Stmt};
-use std::collections::HashMap;
 
 pub struct VM {
     vars: HashMap<String, i64>,
+    file: String,
 }
 
 impl VM {
-    pub fn new() -> Self {
+    /// Create a VM with file context for error reporting
+    pub fn new(file: String) -> Self {
         VM {
             vars: HashMap::new(),
+            file,
         }
+    }
+
+    /// Find (line, col) of the first occurrence of token in the source file
+    fn find_pos(&self, token: &str) -> (usize, usize) {
+        if let Ok(content) = std::fs::read_to_string(&self.file) {
+            for (i, line) in content.lines().enumerate() {
+                if let Some(idx) = line.find(token) {
+                    return (i, idx);
+                }
+            }
+        }
+        (0, 0)
     }
 
     /// Execute a Program and return printed outputs
@@ -22,7 +37,12 @@ impl VM {
         let main_fn = prog
             .functions
             .get("main")
-            .ok_or_else(|| XplError::Semantic("No main function".to_string()))?;
+            .ok_or_else(|| XplError::Semantic {
+                msg: "No main function".to_string(),
+                file: self.file.clone(),
+                line: 0,
+                col: 0,
+            })?;
         for stmt in &main_fn.body {
             match stmt {
                 Stmt::Assign { var, expr } => {
@@ -33,12 +53,7 @@ impl VM {
                     let out = match expr {
                         Expr::LiteralStr(s) => s.clone(),
                         Expr::LiteralInt(i) => i.to_string(),
-                        Expr::VarRef(name) => {
-                            self.vars.get(name).map_or(name.clone(), |v| v.to_string())
-                        }
-                        Expr::Call(_, _) | Expr::BinaryOp(..) => {
-                            self.eval_expr(expr, prog)?.to_string()
-                        }
+                        _ => self.eval_expr(expr, prog)?.to_string(),
                     };
                     outputs.push(out);
                 }
@@ -59,12 +74,7 @@ impl VM {
                                 let out = match expr {
                                     Expr::LiteralStr(s) => s.clone(),
                                     Expr::LiteralInt(i) => i.to_string(),
-                                    Expr::VarRef(name) => {
-                                        self.vars.get(name).map_or(name.clone(), |v| v.to_string())
-                                    }
-                                    Expr::Call(_, _) | Expr::BinaryOp(..) => {
-                                        self.eval_expr(expr, prog)?.to_string()
-                                    }
+                                    _ => self.eval_expr(expr, prog)?.to_string(),
                                 };
                                 outputs.push(out);
                             }
@@ -72,8 +82,11 @@ impl VM {
                         }
                     }
                 }
-                Stmt::Return(_) => {
-                    // ignore return in main
+                Stmt::Return(_) => { /* ignore return in main */ }
+                Stmt::Call(name, args) => {
+                    // Evaluate standalone call, errors on undefined function
+                    let expr = Expr::Call(name.clone(), args.clone());
+                    let _ = self.eval_expr(&expr, prog)?;
                 }
             }
         }
@@ -92,13 +105,23 @@ impl VM {
                     BinOp::Multiply => left * right,
                     BinOp::Divide => {
                         if right == 0 {
-                            return Err(XplError::Semantic("Division by zero".to_string()));
+                            return Err(XplError::Semantic {
+                                msg: "Division by zero".to_string(),
+                                file: self.file.clone(),
+                                line: 0,
+                                col: 0,
+                            });
                         }
                         left / right
                     }
                     BinOp::Modulus => {
                         if right == 0 {
-                            return Err(XplError::Semantic("Division by zero".to_string()));
+                            return Err(XplError::Semantic {
+                                msg: "Division by zero".to_string(),
+                                file: self.file.clone(),
+                                line: 0,
+                                col: 0,
+                            });
                         }
                         left % right
                     }
@@ -106,11 +129,20 @@ impl VM {
                 return Ok(res);
             }
             Expr::LiteralInt(i) => Ok(*i),
-            Expr::VarRef(name) => self
-                .vars
-                .get(name)
-                .cloned()
-                .ok_or_else(|| XplError::Semantic(format!("Undefined variable {}", name))),
+            Expr::VarRef(name) => {
+                match self.vars.get(name) {
+                    Some(v) => Ok(*v),
+                    None => {
+                        let (line, col) = self.find_pos(name);
+                        Err(XplError::Semantic {
+                            msg: format!("Undefined variable {}", name),
+                            file: self.file.clone(),
+                            line: line + 1,
+                            col: col + 1,
+                        })
+                    }
+                }
+            }
             Expr::Call(name, args) => {
                 // Evaluate argument expressions
                 let mut arg_vals = Vec::new();
@@ -120,9 +152,12 @@ impl VM {
                 // Call user-defined function
                 self.call_function(prog, name, arg_vals)
             }
-            _ => Err(XplError::Semantic(
-                "Unsupported expression in eval".to_string(),
-            )),
+            _ => Err(XplError::Semantic {
+                msg: "Unsupported expression in eval".to_string(),
+                file: self.file.clone(),
+                line: 0,
+                col: 0,
+            }),
         }
     }
 
@@ -136,14 +171,27 @@ impl VM {
         let func = prog
             .functions
             .get(name)
-            .ok_or_else(|| XplError::Semantic(format!("Undefined function {}", name)))?;
+            .ok_or_else(|| {
+                let (line, col) = self.find_pos(name);
+                XplError::Semantic {
+                    msg: format!("Undefined function {}", name),
+                    file: self.file.clone(),
+                    line: line + 1,
+                    col: col + 1,
+                }
+            })?;
         if func.params.len() != args.len() {
-            return Err(XplError::Semantic(format!(
-                "Expected {} args for function '{}', got {}",
-                func.params.len(),
-                name,
-                args.len()
-            )));
+            return Err(XplError::Semantic {
+                msg: format!(
+                    "Expected {} args for function '{}', got {}",
+                    func.params.len(),
+                    name,
+                    args.len()
+                ),
+                file: self.file.clone(),
+                line: 0,
+                col: 0,
+            });
         }
         // Setup local frame
         let mut locals = std::collections::HashMap::new();

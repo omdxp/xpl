@@ -30,6 +30,7 @@ pub enum Stmt {
         else_body: Vec<Stmt>,
     },
     Return(Expr),
+    Call(String, Vec<Expr>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -52,17 +53,29 @@ pub enum Expr {
 
 /// Parse an XPL file into a Program AST
 pub fn parse_file(path: &str) -> Result<Program, XplError> {
-    let file = File::open(path)?;
-    let root = Element::parse(file)?;
+    let file = File::open(path).map_err(|e| XplError::Io {
+        source: e,
+        file: path.to_string(),
+    })?;
+    let root = Element::parse(file).map_err(|e| XplError::Xml {
+        source: e,
+        file: path.to_string(),
+    })?;
     let mut functions = HashMap::new();
     // Process include only for program roots (to load libs)
     if root.name == "program" {
         if let Some(include_list) = root.attributes.get("include") {
-            let base = std::path::Path::new(path)
+            let script_dir = std::path::Path::new(path)
                 .parent()
                 .unwrap_or_else(|| std::path::Path::new("."));
             for inc in include_list.split(',').map(|s| s.trim()) {
-                let inc_path = base.join(inc);
+                // try script-relative first, then workspace-relative
+                let rel_path = script_dir.join(inc);
+                let inc_path = if rel_path.exists() {
+                    rel_path
+                } else {
+                    std::path::Path::new(inc).to_path_buf()
+                };
                 let included = parse_file(inc_path.to_str().unwrap())?;
                 functions.extend(included.functions);
             }
@@ -88,8 +101,14 @@ pub fn parse_file(path: &str) -> Result<Program, XplError> {
                     for stmt_node in &body_elem.children {
                         if let XMLNode::Element(stmt_elem) = stmt_node {
                             match stmt_elem.name.as_str() {
+                                "call" => {
+                                    // standalone call statement
+                                    let expr = parse_expr(stmt_elem)?;
+                                    if let Expr::Call(name, args) = expr {
+                                        body.push(Stmt::Call(name, args));
+                                    }
+                                }
                                 "return" => {
-                                    // parse return expression
                                     let expr = if let Some(XMLNode::Element(e)) =
                                         stmt_elem.children.get(0)
                                     {
@@ -101,10 +120,14 @@ pub fn parse_file(path: &str) -> Result<Program, XplError> {
                                     body.push(Stmt::Return(expr));
                                 }
                                 "if" => {
-                                    // parse condition
                                     let cond_elem =
                                         stmt_elem.get_child("condition").ok_or_else(|| {
-                                            XplError::Semantic("Missing condition".to_string())
+                                            XplError::Semantic {
+                                                msg: "Missing condition".to_string(),
+                                                file: path.to_string(),
+                                                line: 0,
+                                                col: 0,
+                                            }
                                         })?;
                                     // either inner element or text
                                     let cond_expr = if let Some(XMLNode::Element(e)) =
@@ -126,7 +149,12 @@ pub fn parse_file(path: &str) -> Result<Program, XplError> {
                                     // then block
                                     let then_elem =
                                         stmt_elem.get_child("then").ok_or_else(|| {
-                                            XplError::Semantic("Missing then block".to_string())
+                                            XplError::Semantic {
+                                                msg: "Missing then block".to_string(),
+                                                file: path.to_string(),
+                                                line: 0,
+                                                col: 0,
+                                            }
                                         })?;
                                     let mut then_body = Vec::new();
                                     for then_node in &then_elem.children {
@@ -154,7 +182,12 @@ pub fn parse_file(path: &str) -> Result<Program, XplError> {
                                     // else block
                                     let else_elem =
                                         stmt_elem.get_child("else").ok_or_else(|| {
-                                            XplError::Semantic("Missing else block".to_string())
+                                            XplError::Semantic {
+                                                msg: "Missing else block".to_string(),
+                                                file: path.to_string(),
+                                                line: 0,
+                                                col: 0,
+                                            }
                                         })?;
                                     let mut else_body = Vec::new();
                                     for else_node in &else_elem.children {
