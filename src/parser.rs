@@ -31,6 +31,10 @@ pub enum Stmt {
     },
     Return(Expr),
     Call(String, Vec<Expr>),
+    Loop {
+        count: Expr,
+        body: Vec<Stmt>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -101,6 +105,66 @@ pub fn parse_file(path: &str) -> Result<Program, XplError> {
                     for stmt_node in &body_elem.children {
                         if let XMLNode::Element(stmt_elem) = stmt_node {
                             match stmt_elem.name.as_str() {
+                                "loop" => {
+                                    // parse loop count
+                                    let times_str = stmt_elem
+                                        .attributes
+                                        .get("times")
+                                        .cloned()
+                                        .unwrap_or_else(|| "0".into());
+                                    let count_expr = parse_text_expr(&times_str);
+                                    // parse loop body statements
+                                    let mut loop_body = Vec::new();
+                                    for loop_node in &stmt_elem.children {
+                                        if let XMLNode::Element(e) = loop_node {
+                                            match e.name.as_str() {
+                                                "print" => {
+                                                    let txt = e
+                                                        .get_text()
+                                                        .unwrap_or_default()
+                                                        .trim()
+                                                        .to_string();
+                                                    let expr = if txt.starts_with('"')
+                                                        && txt.ends_with('"')
+                                                    {
+                                                        Expr::LiteralStr(
+                                                            txt.trim_matches('"').to_string(),
+                                                        )
+                                                    } else if let Ok(i) = txt.parse::<i64>() {
+                                                        Expr::LiteralInt(i)
+                                                    } else {
+                                                        Expr::VarRef(txt)
+                                                    };
+                                                    loop_body.push(Stmt::Print(expr));
+                                                }
+                                                "assign" => {
+                                                    let var = e
+                                                        .attributes
+                                                        .get("var")
+                                                        .cloned()
+                                                        .unwrap_or_default();
+                                                    if let Some(XMLNode::Element(expr_elem)) =
+                                                        e.children.get(0)
+                                                    {
+                                                        let expr = parse_expr(expr_elem)?;
+                                                        loop_body.push(Stmt::Assign { var, expr });
+                                                    }
+                                                }
+                                                "call" => {
+                                                    let expr = parse_expr(e)?;
+                                                    if let Expr::Call(name, args) = expr {
+                                                        loop_body.push(Stmt::Call(name, args));
+                                                    }
+                                                }
+                                                _ => {}
+                                            }
+                                        }
+                                    }
+                                    body.push(Stmt::Loop {
+                                        count: count_expr,
+                                        body: loop_body,
+                                    });
+                                }
                                 "call" => {
                                     // standalone call statement
                                     let expr = parse_expr(stmt_elem)?;

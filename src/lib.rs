@@ -84,4 +84,14 @@ mod tests {
         assert!(err.contains("Undefined function none"));
         assert!(err.contains(path.to_str().unwrap()));
     }
+
+    #[test]
+    fn runs_loop_example() {
+        let path = "examples/loop.xpl";
+        let outputs = run_file(path).unwrap();
+        assert_eq!(
+            outputs,
+            vec!["Loop".to_string(), "Loop".to_string(), "Loop".to_string()]
+        );
+    }
 }

@@ -1,8 +1,8 @@
 // src/vm.rs
 
-use std::collections::HashMap;
 use crate::error::XplError;
 use crate::parser::{BinOp, Expr, Program, Stmt};
+use std::collections::HashMap;
 
 pub struct VM {
     vars: HashMap<String, i64>,
@@ -82,6 +82,68 @@ impl VM {
                         }
                     }
                 }
+                Stmt::Loop { count, body } => {
+                    // evaluate loop count
+                    let times = self.eval_expr(count, prog)?;
+                    for _ in 0..times {
+                        // execute each statement in loop body
+                        for st in body {
+                            match st {
+                                Stmt::Assign { var, expr } => {
+                                    let val = self.eval_expr(expr, prog)?;
+                                    self.vars.insert(var.clone(), val);
+                                }
+                                Stmt::Print(expr) => {
+                                    let out = match expr {
+                                        Expr::LiteralStr(s) => s.clone(),
+                                        Expr::LiteralInt(i) => i.to_string(),
+                                        _ => self.eval_expr(expr, prog)?.to_string(),
+                                    };
+                                    outputs.push(out);
+                                }
+                                Stmt::Loop { .. } => {
+                                    let _nested = Stmt::Loop {
+                                        count: count.clone(),
+                                        body: body.clone(),
+                                    };
+                                    // recurse by adding statement
+                                    // could call run but simpler: ignore nested for now
+                                }
+                                Stmt::Call(name, args) => {
+                                    let expr = Expr::Call(name.clone(), args.clone());
+                                    let _ = self.eval_expr(&expr, prog)?;
+                                }
+                                Stmt::Return(_) => {}
+                                Stmt::If {
+                                    cond,
+                                    then_body,
+                                    else_body,
+                                } => {
+                                    // reuse existing semantics: evaluate one iteration of if
+                                    let cond_val = self.eval_expr(cond, prog)?;
+                                    let branch = if cond_val != 0 { then_body } else { else_body };
+                                    for b in branch {
+                                        match b {
+                                            Stmt::Assign { var, expr } => {
+                                                let v = self.eval_expr(expr, prog)?;
+                                                self.vars.insert(var.clone(), v);
+                                            }
+                                            Stmt::Print(expr) => {
+                                                let o = match expr {
+                                                    Expr::LiteralStr(s) => s.clone(),
+                                                    Expr::LiteralInt(i) => i.to_string(),
+                                                    _ => self.eval_expr(expr, prog)?.to_string(),
+                                                };
+                                                outputs.push(o);
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 Stmt::Return(_) => { /* ignore return in main */ }
                 Stmt::Call(name, args) => {
                     // Evaluate standalone call, errors on undefined function
@@ -129,20 +191,18 @@ impl VM {
                 return Ok(res);
             }
             Expr::LiteralInt(i) => Ok(*i),
-            Expr::VarRef(name) => {
-                match self.vars.get(name) {
-                    Some(v) => Ok(*v),
-                    None => {
-                        let (line, col) = self.find_pos(name);
-                        Err(XplError::Semantic {
-                            msg: format!("Undefined variable {}", name),
-                            file: self.file.clone(),
-                            line: line + 1,
-                            col: col + 1,
-                        })
-                    }
+            Expr::VarRef(name) => match self.vars.get(name) {
+                Some(v) => Ok(*v),
+                None => {
+                    let (line, col) = self.find_pos(name);
+                    Err(XplError::Semantic {
+                        msg: format!("Undefined variable {}", name),
+                        file: self.file.clone(),
+                        line: line + 1,
+                        col: col + 1,
+                    })
                 }
-            }
+            },
             Expr::Call(name, args) => {
                 // Evaluate argument expressions
                 let mut arg_vals = Vec::new();
@@ -168,18 +228,15 @@ impl VM {
         name: &str,
         args: Vec<i64>,
     ) -> Result<i64, XplError> {
-        let func = prog
-            .functions
-            .get(name)
-            .ok_or_else(|| {
-                let (line, col) = self.find_pos(name);
-                XplError::Semantic {
-                    msg: format!("Undefined function {}", name),
-                    file: self.file.clone(),
-                    line: line + 1,
-                    col: col + 1,
-                }
-            })?;
+        let func = prog.functions.get(name).ok_or_else(|| {
+            let (line, col) = self.find_pos(name);
+            XplError::Semantic {
+                msg: format!("Undefined function {}", name),
+                file: self.file.clone(),
+                line: line + 1,
+                col: col + 1,
+            }
+        })?;
         if func.params.len() != args.len() {
             return Err(XplError::Semantic {
                 msg: format!(
