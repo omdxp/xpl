@@ -7,13 +7,22 @@ use xmltree::{Element, XMLNode};
 
 #[derive(Debug, Clone)]
 pub struct Program {
+    pub description: Option<String>,
     pub functions: HashMap<String, Function>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Param {
+    pub name: String,
+    pub ptype: Option<String>,
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Function {
     pub name: String,
-    pub params: Vec<String>,
+    pub description: Option<String>,
+    pub params: Vec<Param>,
     pub body: Vec<Stmt>,
 }
 
@@ -66,6 +75,10 @@ pub fn parse_file(path: &str) -> Result<Program, XplError> {
         file: path.to_string(),
     })?;
     let mut functions = HashMap::new();
+    // optional program-level description
+    let prog_desc = root
+        .get_child("description")
+        .and_then(|d| Some(d.get_text().unwrap_or_default().trim().to_string()));
     // Process include only for program roots (to load libs)
     if root.name == "program" {
         if let Some(include_list) = root.attributes.get("include") {
@@ -88,15 +101,27 @@ pub fn parse_file(path: &str) -> Result<Program, XplError> {
     for node in &root.children {
         if let XMLNode::Element(elem) = node {
             if elem.name == "function" {
+                // optional function-level description
+                let func_desc = elem
+                    .get_child("description")
+                    .and_then(|d| Some(d.get_text().unwrap_or_default().trim().to_string()));
                 let name = elem.attributes.get("name").cloned().unwrap_or_default();
-                // collect parameter names
+                // collect parameters with optional type and description
                 let mut params = Vec::new();
                 for c in &elem.children {
                     if let XMLNode::Element(e) = c {
                         if e.name == "param" {
-                            if let Some(pn) = e.attributes.get("name") {
-                                params.push(pn.clone());
-                            }
+                            let name = e.attributes.get("name").cloned().unwrap_or_default();
+                            let ptype = e.attributes.get("type").cloned();
+                            // optional description child
+                            let desc = e.get_child("description").and_then(|d| {
+                                Some(d.get_text().unwrap_or_default().trim().to_string())
+                            });
+                            params.push(Param {
+                                name,
+                                ptype,
+                                description: desc,
+                            });
                         }
                     }
                 }
@@ -312,11 +337,22 @@ pub fn parse_file(path: &str) -> Result<Program, XplError> {
                         }
                     }
                 }
-                functions.insert(name.clone(), Function { name, params, body });
+                functions.insert(
+                    name.clone(),
+                    Function {
+                        name,
+                        description: func_desc,
+                        params,
+                        body,
+                    },
+                );
             }
         }
     }
-    Ok(Program { functions })
+    Ok(Program {
+        description: prog_desc,
+        functions,
+    })
 }
 
 /// Parse a simple text expression, supporting infix ops

@@ -7,3 +7,9 @@ edition = "2024"
 xmltree = "0.11.0"
 thiserror = "2.0.12"
 ansi_term = "0.12"
+tower-lsp = "0.20.0"
+tokio = { version = "1.44.2", features = ["full"] }
+
+[[bin]]
+name = "xpl_ls"
+path = "src/bin/xpl_ls.rs"

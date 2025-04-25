@@ -1,0 +1,71 @@
+{
+  "scopeName": "source.xpl",
+  "fileTypes": ["xpl"],
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#tag" },
+    { "include": "#keywords" }
+  ],
+  "repository": {
+    "comments": {
+      "name": "comment.block.xpl",
+      "begin": "<!--",
+      "end": "-->"
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.xpl",
+          "begin": "\"",
+          "end": "\""
+        },
+        {
+          "name": "string.quoted.single.xpl",
+          "begin": "'",
+          "end": "'"
+        }
+      ]
+    },
+    "numbers": {
+      "name": "constant.numeric.xpl",
+      "match": "\\b\\d+(?:\\.\\d+)?\\b"
+    },
+    "tag": {
+      "patterns": [
+        {
+          "name": "meta.tag.xpl",
+          "begin": "<(\\/?)([A-Za-z_][\\w-]*)",
+          "beginCaptures": {
+            "1": { "name": "punctuation.definition.tag.begin.xpl" },
+            "2": { "name": "entity.name.tag.xpl" }
+          },
+          "end": ">",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.tag.end.xpl" }
+          },
+          "patterns": [
+            {
+              "name": "entity.other.attribute-name.xpl",
+              "match": "\\b[A-Za-z_:][\\w:.-]*(?=\\=)"
+            },
+            {
+              "name": "keyword.operator.assignment.xpl",
+              "match": "="
+            },
+            { "include": "#strings" }
+          ]
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.xpl",
+          "match": "\\b(?:program|include|function|var|assign|if|then|else|loop|return|print|call|body|param)\\b"
+        }
+      ]
+    }
+  }
+}

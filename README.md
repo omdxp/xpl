@@ -7,11 +7,26 @@ Programs can include libraries (e.g. `math.xpl`) with `<program include="math.xp
 ## Quick Start
 
 ```sh
-git clone https://github.com/yourusername/xpl.git
+git clone https://github.com/omdxp/xpl.git
 cd xpl
 cargo install --path .
 xpl examples/hello.xpl
 ```
+
+## VSCode Extension
+
+A Visual Studio Code extension for xpl syntax highlighting and language features is available under the `vscode/` folder.
+
+To install locally:
+
+```sh
+cd vscode
+npm install
+npm run compile
+enable the extension in VS Code (Debug: Launch Extension)
+```
+
+See `vscode/README.md` for full documentation.
 
 ## Examples
 
@@ -22,4 +37,4 @@ xpl examples/hello.xpl
 
 ## License
 
-MIT
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.

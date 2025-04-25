@@ -1,0 +1,52 @@
+{
+  "name": "xpl-syntax",
+  "displayName": "xpl Syntax Highlighting",
+  "publisher": "omdxp",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.50.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "xpl",
+        "aliases": [
+          "XPL",
+          "xpl"
+        ],
+        "extensions": [
+          ".xpl"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "xpl",
+        "scopeName": "source.xpl",
+        "path": "./syntaxes/xpl.tmLanguage.json"
+      }
+    ]
+  },
+  "activationEvents": [
+    "onLanguage:xpl"
+  ],
+  "main": "./out/extension.js",
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc --watch -p ./"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@types/vscode": "^1.1.37",
+    "@vscode/test-electron": "^2.5.2",
+    "typescript": "^5.8.3"
+  }
+}

@@ -253,7 +253,7 @@ impl VM {
         // Setup local frame
         let mut locals = std::collections::HashMap::new();
         for (p, v) in func.params.iter().zip(args) {
-            locals.insert(p.clone(), v);
+            locals.insert(p.name.clone(), v);
         }
         // Save global vars
         let saved = std::mem::take(&mut self.vars);
