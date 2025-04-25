@@ -8,7 +8,7 @@ use tower_lsp::lsp_types::{
     InitializedParams, Location, MarkedString, MessageType, OneOf, ParameterInformation,
     ParameterLabel, Position, Range, ReferenceParams, ServerCapabilities, SignatureHelp,
     SignatureHelpOptions, SignatureHelpParams, SignatureInformation, TextDocumentSyncCapability,
-    TextDocumentSyncKind,
+    TextDocumentSyncKind, Url,
 };
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 use xpl::XplError;
@@ -79,6 +79,7 @@ impl LanguageServer for Backend {
         let pos = params.text_document_position_params.position;
         let token = get_token_at(&src, pos.line as usize, pos.character as usize);
         if let Some(tok) = token {
+            // search in current file
             for (i, line) in src.lines().enumerate() {
                 if line.contains(&format!("<function name=\"{}\"", tok)) {
                     if let Some(col) = line.find(&tok) {
@@ -90,6 +91,34 @@ impl LanguageServer for Backend {
                             },
                         };
                         return Ok(Some(GotoDefinitionResponse::Scalar(loc)));
+                    }
+                }
+            }
+            // search other .xpl files in the same directory
+            if let Some(dir) = path.parent() {
+                if let Ok(entries) = std::fs::read_dir(dir) {
+                    for entry in entries.flatten() {
+                        let pth = entry.path();
+                        if pth.extension().and_then(|e| e.to_str()) == Some("xpl") {
+                            let content = std::fs::read_to_string(&pth).unwrap_or_default();
+                            for (j, l) in content.lines().enumerate() {
+                                if l.contains(&format!("<function name=\"{}\"", tok)) {
+                                    if let Some(start) = l.find(&tok) {
+                                        let uri2 = Url::from_file_path(&pth).unwrap();
+                                        let range = Range {
+                                            start: Position::new(j as u32, start as u32),
+                                            end: Position::new(
+                                                j as u32,
+                                                (start + tok.len()) as u32,
+                                            ),
+                                        };
+                                        return Ok(Some(GotoDefinitionResponse::Scalar(
+                                            Location { uri: uri2, range },
+                                        )));
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
